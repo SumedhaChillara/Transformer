@@ -210,3 +210,27 @@ learning_rates = [
 # optimizer with different learning rates for different layers
 optimizer = optim.Adam(learning_rates)
 
+
+
+"""#### My understanding and Summarization Task 3: Training Considerations
+When freezing the entire network, only the task-specific heads are trainable, using pre-trained embeddings for quick and computationally efficient . Gradients are computed only for the task-specific heads, no backpropagation through the transformer layers.
+
+Freezing only the transformer backbone preserves general linguistic features while allowing task-specific heads to specialize, balancing computational efficiency and adaptability. Gradients flow through the transformer to compute the task-specific head updates, but transformer weights remain unchanged
+
+Freezing one task-specific head enables incremental learning, maintaining performance on one task while adapting to another. Gradients affect the transformer and one task-specific head, leaving the other head's weights unchanged
+
+For transfer learning, using a pre-trained model freeze the initial layers (first 6) to retain general features and** unfreeze higher layers** and task-specific heads to adapt to new tasks, ensuring robust performance with minimal training time.
+
+
+---
+
+
+
+####Task 4: Layer-wise Learning Rate Implementation (BONUS)
+
+Implementing layer-wise learning rates involves setting lower rates (1e-5) for initial transformer layers to maintain pre-trained stability, higher rates ( 5e-5) for higher layers to adapt task-specific features, and the highest rates ( 1e-4) for task-specific heads for rapid learning.
+
+This approach optimizes training efficiency and performance, preserving foundational knowledge while enabling quick adaptation to specific tasks, which is especially beneficial in multi-task learning to balance shared and task-specific learning.
+
+"""
+
