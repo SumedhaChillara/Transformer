@@ -31,15 +31,15 @@ from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from transformers import BertTokenizer
 
 '''
-Here we have chose distilbert-base-uncased as it is a smaller, faster, and lighter version of BERT.
-It retains 97% of BERT's performance while being 60% faster and 40% smaller.
-This makes it a good choice for applications where computational resources are limited.
+DistilBERT is chosen as the transformer backbone due to its computational efficiency and competitive performance compared to the larger BERT model.
+This choice is particularly helpful for applications with limited computational resources where real-time inference is required.
 
-Transformers: The Hugging Face transformers library provides easy access to pre-trained transformer models like BERT,
+Transformers: The Hugging Face transformers library is used here , which gives us easy access to pre-trained transformer models like BERT,
 including tokenizers and model classes.
 
 embedding_dim=768: The dimension of the output sentence embeddings. By default, it is set to 768, matching BERT's hidden size.
 Here the output of our model has the embeddings for each token in the sequence have a fixed length.
+
 The forward method processes the input through DistilBERT and then through the projection layer to get the sentence embeddings.
 The sentence embeddings are then returned.
 
@@ -47,18 +47,28 @@ A linear layer is added after DistilBERT to allow for dimension reduction or tra
 Here our projection layer keeps the dimension same as the output dimension of DistilBERT (768).
 
 [CLS] pool startegy is a common used pooling texhnique: token's embedding from the last hidden state to represent the sentence embedding is used here
+We adopted this as it aligns with the pre-training objective of these models, where token is used for sequence-level tasks such as classification
 
 '''
 
 class SentenceTransformer(nn.Module):
     def __init__(self, model_name="distilbert-base-uncased", embedding_dim=768):
+        #Initializes the class
         super(SentenceTransformer, self).__init__()
+
+        #Loads a pre-trained DistilBERT model
         self.bert = DistilBertModel.from_pretrained(model_name)
+
+        #Defines a linear layer for projecting the encoded representation from the BERT model to the desired embedding dimension
+
         self.projection = nn.Linear(self.bert.config.hidden_size, embedding_dim)
 
     def forward(self, input_ids, attention_mask):
+      #This method defines the forward pass of the model, taking input IDs and attention mask as arguments
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        #outputs contains the last hidden state of the BERT model
         last_hidden_state = outputs.last_hidden_state
+
         sentence_embeddings = self.projection(last_hidden_state[:, 0, :]) #pooling startegy
         return sentence_embeddings
 
@@ -72,9 +82,11 @@ embeddings = model(encoded_input['input_ids'], encoded_input['attention_mask'])
 
 print(embeddings.shape)
 print(embeddings)
+#The output of the model is a tuple containing the last hidden state, which represents the contextualized token embeddings.
 
 # Task 2: Multi-Task Learning Expansion
 '''
+Multi-task model can  handle multiple tasks without the need to retrain the model for each task making it computationally effcient.
 The primary modification we followed here is  adding separate task-specific heads to handle different tasks,
 such as Task_a: sentence classification and  Task_b sentiment analysis
 Two separate linear layers are added after the projection layer. These heads are responsible for producing task-specific outputs.
@@ -126,89 +138,37 @@ print("Logits for Task A:", logits_task_a)
 logits_task_b = model(encoded_input['input_ids'], encoded_input['attention_mask'], task="task_b")
 print("Logits for Task B:", logits_task_b)
 
-"""#Task 3: Training Considerations
+"""##Task 3
+
+
+#### If the entire network should be frozen.
+
+1. Freezing the entire network means no parameters will be updated during training, effectively turning the model into a fixed feature extractor. Freezing the entire network is generally not recommended for multi-task learning scenarios. It should only be considered if the pre-trained representations are already highly optimized for the target tasks.
 
 
 ---
 
+#### If only the transformer backbone should be frozen.
 
-If the entire network should be frozen:
-
-1. Freezing the entire network means that no parameters will be updated during training, effectively turning the model into a fixed feature extractor.
-
-Advantages: Computational efficiency, as no gradients need to be computed for the frozen layers.
-Disadvantages: The model cannot adapt to the specific tasks or domains, and its performance will be limited by the pre-trained representations.
-
-My approach :Freezing the entire network is generally not recommended for multi-task learning scenarios, as it defeats the purpose of fine-tuning
-the model on the specific tasks.
-It should only be considered if the pre-trained representations are already highly optimized for the target tasks, which is rarely the case.
-
+2. Freezing the transformer backbone is a common practice in transfer learning for NLP tasks. It allows the model to leverage the general language representations learned during pre-training while fine-tuning the task-specific components.
 
 
 ---
 
+#### If only one of the task-specific heads (either for Task A or Task B) should be frozen.
+3. Freezing one of the task-specific heads can be useful in scenarios where you want to transfer knowledge from a well-performing model for one task to improve performance on another task. For example, if you have a highly accurate model for Task A, you could freeze the Task A head and fine-tune the rest of the model on Task B, leveraging the knowledge from Task A.
 
-2. If only the transformer backbone should be frozen:
+###Transfer Learning Scenario:
 
-In this scenario, the transformer backbone (e.g., BERT) is frozen, while the task-specific heads and the projection layer are allowed to be trained.
+---
+When doing transfer learning for NLP tasks, it's important to pick a pre-trained model like **BERT, RoBERTa, XLNet, or GPT**, which has been trained on relevant data.
 
-Advantages: Computational efficiency, as the transformer backbone typically has a large number of parameters; leverages the pre-trained language representations while adapting the task-specific components.
+An effective approach is to **freeze the transformer backbone and fine-tune the task-specific heads and the projection layer**.
 
-Disadvantages: Limited ability to adapt the language representations to the specific tasks or domains.
-
-My approach:
-Freezing the transformer backbone is a common practice in transfer learning for NLP tasks. It allows the model to leverage the general language representations learned during pre-training while fine-tuning the task-specific components. This approach strikes a balance between computational efficiency and task-specific adaptation.
-
+Unfreezing a few transformer backbone layers can help the model adapt its language representations to specific tasks or domains, especially if they're significantly different from the pre-training data.
 
 
 ---
-
-
-3. If only one of the task-specific heads (either for Task A or Task B) should be frozen:
-
-In this scenario, one of the task-specific heads is frozen, while the other head, the transformer backbone,
-and the projection layer are allowed to be trained.
-
-Advantages: Allows for knowledge transfer from the frozen task-specific head to the other components of the model, potentially improving performance on the new task.
-Disadvantages: Limited ability for the model to fully adapt to the new task, as the frozen task-specific head is not updated during training.
-Approach:
-Freezing one of the task-specific heads can be useful in scenarios where you want to transfer knowledge from a well-performing model for one task to improve performance on another task.
-For example, if you have a highly accurate model for Task A,
-you could freeze the Task A head and fine-tune the rest of the model on Task B, leveraging the knowledge from Task A.
-
-Transfer Learning Scenario:
-
-
----
-
-
-
-Choice of a pre-trained model:
-
-For transfer learning in NLP tasks, it is recommended to choose a pre-trained model that has been trained on a large corpus of data relevant to the target tasks.
-Popular choices include BERT, RoBERTa, XLNet, and GPT models, which have been pre-trained on large datasets like Wikipedia, BookCorpus, and web crawl data.
-
-The choice of the pre-trained model can significantly impact the performance of the downstream tasks, as the model's initial representations can influence the fine-tuning process.
-
-
-
-
-
-
----
-
-
-Layers to freeze/unfreeze:
-
-A common approach is to freeze the transformer backbone (e.g., BERT) and fine-tune the task-specific heads and the projection layer.
-Alternatively, you could unfreeze a few layers of the transformer backbone and fine-tune them along with the task-specific heads.
-
-This can be beneficial if the target tasks are significantly different from the pre-training data domain.
-
-
----
-
-
 
 My approach:
 
@@ -217,24 +177,15 @@ My approach:
 2. Fine-tuning the task-specific heads and the projection layer allows the model to adapt to the specific tasks and learn task-relevant representations.
 
 3. Unfreezing a few layers of the transformer backbone can help the model adapt its language representations to the specific tasks or domains, potentially improving performance if the target tasks are significantly different from the pre-training data.
-
-
-
 ---
-
-
-
-In summary, the choice of freezing or fine-tuning different components of the model depends on the specific requirements, computational resources, and the similarity between the pre-training data and the target tasks.
-
-A common approach is to freeze the transformer backbone and fine-tune the task-specific heads and the projection layer, while unfreezing a few layers of the backbone can be considered if the target tasks are significantly different from the pre-training data.
 """
 
 #Task 4: Layer-wise Learning Rate Implementation (BONUS)
 
 '''
 Lower learning rates are typically set for the lower layers of the network because they often capture more general features and require more stable updates.
-Slightly higher learning rates can be set for the middle layers (e.g., projection layer) to ensure faster adaptation to task-specific features.
-Higher learning rates are set for the task-specific heads (e.g., task_a_head and task_b_head) to facilitate faster convergence on the specific task
+Slightly higher learning rates can be set for the middle layers to ensure faster adaptation to task-specific features.
+Higher learning rates are set for the task-specific heads (task_a_head and task_b_head) to facilitate faster convergence on the specific task
 
 Advantages  of using layer wise learning rates:
 Improved stability and faster convergence.
